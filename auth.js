@@ -1,82 +1,79 @@
-//We can do this all in server.js but since this is a big app and we need many routes so we do not want to complicate the server.js
+import api from '../utils/api';
+import { setAlert } from './alert';
+import {
+  REGISTER_SUCCESS,
+  REGISTER_FAIL,
+  USER_LOADED,
+  AUTH_ERROR,
+  LOGIN_SUCCESS,
+  LOGIN_FAIL,
+  LOGOUT,
+} from './types';
 
-const express = require('express');
-const router = express.Router();
-//Need the middleware
-const auth = require('../../middleware/auth');
-const User = require('../../models/User');
-const { check, validationResult } = require('express-validator');
-const config = require('config');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-
-//@route        Get api/auth
-//@desc         Test route
-//@access       Public
-router.get('/', auth, async (req, res) => {
+// Load User
+export const loadUser = () => async dispatch => {
   try {
-    const user = await User.findById(req.user.id).select('-password'); //req.user because the Token is encrypted and in middleware we used req.user to fetch the user details
-    //String of -passwor '-password' will leave of the password from the fetched information
-    res.json(user);
+    const res = await api.get('/auth');
+
+    dispatch({
+      type: USER_LOADED,
+      payload: res.data,
+    });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    dispatch({
+      type: AUTH_ERROR,
+    });
   }
-}); //auth to make this route protected
+};
 
-//@route        POST api/auth
-//@desc         Authenticate & get token
-//@access       Public
-router.post(
-  '/',
-  [
-    check('email', 'Please enter a valid Email').isEmail(),
-    check('password', 'Password is required').exists(),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      //To return Error in form of an array
-      return res.status(400).json({ errors: errors.array() });
+// Register User
+export const register = formData => async dispatch => {
+  try {
+    const res = await api.post('/users', formData);
+
+    dispatch({
+      type: REGISTER_SUCCESS,
+      payload: res.data,
+    });
+    dispatch(loadUser());
+  } catch (err) {
+    const errors = err.response.data.errors;
+
+    if (errors) {
+      errors.forEach(error => dispatch(setAlert(error.msg, 'danger')));
     }
-    //Pullout Name Email and Password from requested body
-    const { email, password } = req.body;
-    try {
-      //See if user exists
-      let user = await User.findOne({ email });
-      if (!user) {
-        return res
-          .status(400)
-          .json({ errors: [{ msg: 'Invalid Credentials' }] });
-      }
 
-      const isMatch = await bcrypt.compare(password, user.password); //Returns a promise, Takes two parameters : a normal entered password and an encrypted password  // Because we have the user details we can fetch the encrypted password
-      if (!isMatch) {
-        return res
-          .status(400)
-          .json({ errors: [{ msg: 'Invalid Credentials' }] });
-      }
-
-      //Return JsonWebToken
-      const payload = {
-        user: {
-          id: user.id, //user.save() will return us a promise so we can get user.id
-        },
-      };
-      jwt.sign(
-        payload,
-        config.get('jwtSecret'),
-        { expiresIn: 360000 },
-        (err, token) => {
-          if (err) throw err;
-          res.json({ token });
-        }
-      );
-    } catch (err) {
-      console.log(err.message);
-      res.status(500).send('Server Error');
-    }
+    dispatch({
+      type: REGISTER_FAIL,
+    });
   }
-);
+};
 
-module.exports = router;
+// Login User
+export const login = (email, password) => async dispatch => {
+  const body = { email, password };
+
+  try {
+    const res = await api.post('/auth', body);
+
+    dispatch({
+      type: LOGIN_SUCCESS,
+      payload: res.data,
+    });
+
+    dispatch(loadUser());
+  } catch (err) {
+    const errors = err.response.data.errors;
+
+    if (errors) {
+      errors.forEach(error => dispatch(setAlert(error.msg, 'danger')));
+    }
+
+    dispatch({
+      type: LOGIN_FAIL,
+    });
+  }
+};
+
+// Logout
+export const logout = () => ({ type: LOGOUT });

@@ -1,293 +1,226 @@
-//We can do this all in server.js but since this is a big app and we need many routes so we do not want to complicate the server.js
+import api from '../utils/api';
+import { setAlert } from './alert';
 
-const express = require('express');
-const router = express.Router();
-const request = require('request');
-const config = require('config');
-const auth = require('../../middleware/auth');
-const { check, validationResult } = require('express-validator');
+import {
+  GET_PROFILE,
+  GET_PROFILES,
+  PROFILE_ERROR,
+  UPDATE_PROFILE,
+  CLEAR_PROFILE,
+  ACCOUNT_DELETED,
+  GET_REPOS,
+  NO_REPOS,
+} from './types';
 
-const Profile = require('../../models/Profile');
-const User = require('../../models/User');
-// @route    GET api/profile/me
-// @desc     Get current users profile
-// @access   Private
-router.get('/me', auth, async (req, res) => {
+// Get current users profile
+export const getCurrentProfile = () => async dispatch => {
   try {
-    const profile = await Profile.findOne({
-      user: req.user.id,
-    }).populate('user', ['name', 'avatar']);
+    const res = await api.get('/profile/me');
 
-    if (!profile) {
-      return res.status(400).json({ msg: 'There is no profile for this user' });
-    }
-
-    res.json(profile);
+    dispatch({
+      type: GET_PROFILE,
+      payload: res.data,
+    });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    dispatch({
+      type: PROFILE_ERROR,
+      payload: { msg: err.response.statusText, status: err.response.status },
+    });
   }
-});
-// @route    POST api/profile
-// @desc     Create or update user profile
-// @access   Private
-router.post(
-  '/',
-  auth,
-  check('status', 'Status is required').notEmpty(),
-  check('skills', 'Skills is required').notEmpty(),
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+};
+
+// Get all profiles
+export const getProfiles = () => async dispatch => {
+  dispatch({ type: CLEAR_PROFILE });
+
+  try {
+    const res = await api.get('/profile');
+
+    dispatch({
+      type: GET_PROFILES,
+      payload: res.data,
+    });
+  } catch (err) {
+    dispatch({
+      type: PROFILE_ERROR,
+      payload: { msg: err.response.statusText, status: err.response.status },
+    });
+  }
+};
+
+// Get profile by ID
+export const getProfileById = userId => async dispatch => {
+  try {
+    const res = await api.get(`/profile/user/${userId}`);
+
+    dispatch({
+      type: GET_PROFILE,
+      payload: res.data,
+    });
+  } catch (err) {
+    dispatch({
+      type: PROFILE_ERROR,
+      payload: { msg: err.response.statusText, status: err.response.status },
+    });
+  }
+};
+
+// Get Github repos
+export const getGithubRepos = username => async dispatch => {
+  try {
+    const res = await api.get(`/profile/github/${username}`);
+
+    dispatch({
+      type: GET_REPOS,
+      payload: res.data,
+    });
+  } catch (err) {
+    dispatch({
+      type: NO_REPOS,
+    });
+  }
+};
+
+// Create or update profile
+export const createProfile = (
+  formData,
+  history,
+  edit = false
+) => async dispatch => {
+  try {
+    const res = await api.post('/profile', formData);
+
+    dispatch({
+      type: GET_PROFILE,
+      payload: res.data,
+    });
+
+    dispatch(setAlert(edit ? 'Profile Updated' : 'Profile Created', 'success'));
+
+    if (!edit) {
+      history.push('/dashboard');
     }
-    // destructure the request
-    const {
-      company,
-      website,
-      location,
-      bio,
-      status,
-      githubusername,
-      skills,
-      youtube,
-      twitter,
-      instagram,
-      linkedin,
-      facebook,
-      // spread the rest of the fields we don't need to check
-      ...rest
-    } = req.body;
+  } catch (err) {
+    const errors = err.response.data.errors;
 
-    //Build Profile Object
-    const profileFields = {};
-    profileFields.user = req.user.id;
-    if (company) profileFields.company = company;
-    if (website) profileFields.website = website;
-    if (location) profileFields.location = location;
-    if (bio) profileFields.bio = bio;
-    if (status) profileFields.status = status;
-    if (githubusername) profileFields.githubusername = githubusername;
-    if (skills) {
-      //Skills would be coma separated list or array
-      profileFields.skills = skills.split(',').map(skill => skill.trim());
-      //.trim() to remove the extra spaces
+    if (errors) {
+      errors.forEach(error => dispatch(setAlert(error.msg, 'danger')));
     }
 
-    //Build Social Objects
-    profileFields.social = {};
-    if (youtube) profileFields.social.youtube = youtube;
-    if (twitter) profileFields.social.twitter = twitter;
-    if (facebook) profileFields.social.facebook = facebook;
-    if (linkedin) profileFields.social.linkedin = linkedin;
-    if (instagram) profileFields.social.instagram = instagram;
+    dispatch({
+      type: PROFILE_ERROR,
+      payload: { msg: err.response.statusText, status: err.response.status },
+    });
+  }
+};
 
+// Add Experience
+export const addExperience = (formData, history) => async dispatch => {
+  try {
+    const res = await api.put('/profile/experience', formData);
+
+    dispatch({
+      type: UPDATE_PROFILE,
+      payload: res.data,
+    });
+
+    dispatch(setAlert('Experience Added', 'success'));
+
+    history.push('/dashboard');
+  } catch (err) {
+    const errors = err.response.data.errors;
+
+    if (errors) {
+      errors.forEach(error => dispatch(setAlert(error.msg, 'danger')));
+    }
+
+    dispatch({
+      type: PROFILE_ERROR,
+      payload: { msg: err.response.statusText, status: err.response.status },
+    });
+  }
+};
+
+// Add Education
+export const addEducation = (formData, history) => async dispatch => {
+  try {
+    const res = await api.put('/profile/education', formData);
+
+    dispatch({
+      type: UPDATE_PROFILE,
+      payload: res.data,
+    });
+
+    dispatch(setAlert('Education Added', 'success'));
+
+    history.push('/dashboard');
+  } catch (err) {
+    const errors = err.response.data.errors;
+
+    if (errors) {
+      errors.forEach(error => dispatch(setAlert(error.msg, 'danger')));
+    }
+
+    dispatch({
+      type: PROFILE_ERROR,
+      payload: { msg: err.response.statusText, status: err.response.status },
+    });
+  }
+};
+
+// Delete experience
+export const deleteExperience = id => async dispatch => {
+  try {
+    const res = await api.delete(`/profile/experience/${id}`);
+
+    dispatch({
+      type: UPDATE_PROFILE,
+      payload: res.data,
+    });
+
+    dispatch(setAlert('Experience Removed', 'success'));
+  } catch (err) {
+    dispatch({
+      type: PROFILE_ERROR,
+      payload: { msg: err.response.statusText, status: err.response.status },
+    });
+  }
+};
+
+// Delete education
+export const deleteEducation = id => async dispatch => {
+  try {
+    const res = await api.delete(`/profile/education/${id}`);
+
+    dispatch({
+      type: UPDATE_PROFILE,
+      payload: res.data,
+    });
+
+    dispatch(setAlert('Education Removed', 'success'));
+  } catch (err) {
+    dispatch({
+      type: PROFILE_ERROR,
+      payload: { msg: err.response.statusText, status: err.response.status },
+    });
+  }
+};
+
+// Delete account & profile
+export const deleteAccount = () => async dispatch => {
+  if (window.confirm('Are you sure? This can NOT be undone!')) {
     try {
-      let profile = await Profile.findOne({ user: req.user.id });
+      await api.delete('/profile');
 
-      if (profile) {
-        //Update
-        profile = await Profile.findOneAndUpdate(
-          { user: req.user.id },
-          { $set: profileFields },
-          { new: true }
-        );
-        return res.json(profile);
-      }
+      dispatch({ type: CLEAR_PROFILE });
+      dispatch({ type: ACCOUNT_DELETED });
 
-      //Create if not found
-      profile = new Profile(profileFields);
-      await profile.save();
-      res.json(profile);
+      dispatch(setAlert('Your account has been permanently deleted'));
     } catch (err) {
-      console.log(err.message);
-      res.status(500).send('Server Error');
-    }
-
-    console.log(profileFields.skills);
-    res.send('Hello');
-  }
-);
-// @route    GET api/profile
-// @desc     Get all profiles
-// @access   Public
-router.get('/', async (req, res) => {
-  try {
-    const profiles = await Profile.find().populate('user', ['name', 'avatar']);
-    res.json(profiles);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
-
-// @route    GET api/profile/user/:user_id
-// @desc     Get all profiles by user ID
-// @access   Public
-router.get('/user/:user_id', async (req, res) => {
-  try {
-    const profile = await Profile.findOne({
-      user: req.params.user_id,
-    }).populate('user', ['name', 'avatar']);
-    if (!profile) return res.status(400).json({ msg: 'Profile not found' });
-    res.json(profile);
-  } catch (err) {
-    console.error(err.message);
-    if (err.kind == 'ObjectId') {
-      return res.status(400).json({ msg: 'Profile not found' });
-    }
-    res.status(500).send('Server Error');
-  }
-});
-
-// @route    Delete api/profile
-// @desc     Delete profile, user & posts
-// @access   Private
-router.delete('/', auth, async (req, res) => {
-  try {
-    //todo- Remove users posts
-
-    //Remove Profile
-    await Profile.findOneAndRemove({ user: req.user.id });
-    //Remove User
-    await User.findOneAndRemove({ _id: req.user.id });
-
-    res.json({ msg: 'User Deleted' });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
-// @route    PUT api/profile/experience
-// @desc     Add profile experience
-// @access   Private
-router.put(
-  '/experience',
-  auth,
-  check('title', 'Title is required').notEmpty(),
-  check('company', 'Company is required').notEmpty(),
-  check(
-    'from',
-    'From date is required and needs to be from the past'
-  ).notEmpty(),
-  // custom((value, { req }) => (req.body.to ? value < req.body.to : true)),
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    try {
-      const profile = await Profile.findOne({ user: req.user.id });
-
-      profile.experience.unshift(req.body);
-
-      await profile.save();
-
-      res.json(profile);
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send('Server Error');
+      dispatch({
+        type: PROFILE_ERROR,
+        payload: { msg: err.response.statusText, status: err.response.status },
+      });
     }
   }
-);
-
-// @route    DELETE api/profile/experience/:exp_id
-// @desc     Delete experience from profile
-// @access   Private
-
-router.delete('/experience/:exp_id', auth, async (req, res) => {
-  try {
-    const foundProfile = await Profile.findOne({ user: req.user.id });
-
-    const removeIndex = foundProfile.experience
-      .map(item => item.id)
-      .indexOf(req.params.exp_id);
-    foundProfile.experience.splice(removeIndex, 1);
-    // foundProfile.experience = foundProfile.experience.filter(
-    // (exp) => exp._id.toString() !== req.params.exp_id
-    // );
-
-    await foundProfile.save();
-    res.json(foundProfile);
-    // return res.status(200).json(foundProfile);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ msg: 'Server error' });
-  }
-});
-
-// @route    PUT api/profile/education
-// @desc     Add profile education
-// @access   Private
-router.put(
-  '/education',
-  auth,
-  check('school', 'School is required').notEmpty(),
-  check('degree', 'Degree is required').notEmpty(),
-  check('fieldofstudy', 'Field of study is required').notEmpty(),
-  check('from', 'From date is required and needs to be from the past')
-    .notEmpty()
-    .custom((value, { req }) => (req.body.to ? value < req.body.to : true)),
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    try {
-      const profile = await Profile.findOne({ user: req.user.id });
-
-      profile.education.unshift(req.body);
-
-      await profile.save();
-
-      res.json(profile);
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send('Server Error');
-    }
-  }
-);
-
-// @route    DELETE api/profile/education/:edu_id
-// @desc     Delete education from profile
-// @access   Private
-
-router.delete('/education/:edu_id', auth, async (req, res) => {
-  try {
-    const foundProfile = await Profile.findOne({ user: req.user.id });
-    foundProfile.education = foundProfile.education.filter(
-      edu => edu._id.toString() !== req.params.edu_id
-    );
-    await foundProfile.save();
-    return res.status(200).json(foundProfile);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ msg: 'Server error' });
-  }
-});
-
-// @route    GET api/profile/github/:username
-// @desc     Get user repos from Github
-// @access   Public
-
-router.get('/github/:username', async (req, res) => {
-  try {
-    const options = {
-      uri: encodeURI(
-        `https://api.github.com/users/${req.params.username}/repos?per_page=5&sort=created:asc`
-      ),
-      method: 'GET',
-      headers: {
-        'user-agent': 'node.js',
-        Authorization: `token ${config.get('githubToken')}`,
-      },
-    };
-  } catch (err) {
-    console.error(err.message);
-    return res.status(404).json({ msg: 'No Github profile found' });
-  }
-});
-
-module.exports = router;
+};
